@@ -1,29 +1,30 @@
 #!/usr/bin/env python3
-"""
-Caching request module
-"""
+""" Web cache module """
 
 import redis
 import requests
-from functools import wraps
 from typing import Callable
+from functools import wraps
+
+redis = redis.Redis()
 
 
-def track_get_page(fn: Callable) -> Callable:
+def wrap_requests(fn: Callable) -> Callable:
+
     @wraps(fn)
-    def wrapper(url: str) -> str:
-        client = redis.Redis()
-        client.incr(f'count:{url}')
-        cached_page = client.get(f'{url}')
-        if cached_page:
-            return cached_page.decode('utf-8')
-        response = fn(url)
-        client.set(f'{url}', response, 10)
-        return response
+    def wrapper(url):
+        redis.incr(f"count:{url}")
+        cached_response = redis.get(f"cached:{url}")
+        if cached_response:
+            return cached_response.decode('utf-8')
+        result = fn(url)
+        redis.setex(f"cached:{url}", 10, result)
+        return result
+
     return wrapper
 
 
-@track_get_page
+@wrap_requests
 def get_page(url: str) -> str:
     response = requests.get(url)
     return response.text
