@@ -1,19 +1,29 @@
 #!/usr/bin/env python3
-""" Expiring web cache module """
+"""
+Caching request module
+"""
 
 import redis
 import requests
-r = redis.Redis()
-count = 0
+from functools import wraps
+from typing import Callable
 
 
+def track_get_page(fn: Callable) -> Callable:
+    @wraps(fn)
+    def wrapper(url: str) -> str:
+        client = redis.Redis()
+        client.incr(f'count:{url}')
+        cached_page = client.get(f'{url}')
+        if cached_page:
+            return cached_page.decode('utf-8')
+        response = fn(url)
+        client.set(f'{url}', response, 10)
+        return response
+    return wrapper
+
+
+@track_get_page
 def get_page(url: str) -> str:
-    r.set(f"cached:{url}", count)
-    resp = requests.get(url)
-    r.incr(f"count:{url}")
-    r.setex(f"cached:{url}", 10, r.get(f"cached:{url}"))
-    return resp.text
-
-
-if __name__ == "__main__":
-    get_page('http://slowwly.robertomurray.co.uk')
+    response = requests.get(url)
+    return response.text
